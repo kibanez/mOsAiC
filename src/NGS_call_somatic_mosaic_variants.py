@@ -10,18 +10,9 @@ from os import path as osp
 from wx.lib.agw.thumbnailctrl import file_broken
 from HTSeq import SAM_Reader
 
-localModulesBase = osp.dirname(osp.realpath(__file__))
-
-modulesRelDirs = ["../modules"]
-
-for moduleRelDir in modulesRelDirs:
-        sys.path.insert(0,osp.join(localModulesBase,moduleRelDir))
- 
-
 import ConfigParser
 
 from subprocess import Popen , PIPE
-from shlex import split  # para hacer pipes ('|')
 
 from itertools import izip_longest, chain
 
@@ -39,7 +30,19 @@ from tempfile import mkstemp
 from shutil import move
 from os import remove, close
 
+import warnings
+
 import numpy as np
+
+modulesRelDirs = ["modules/"]
+
+localModulesBase = osp.dirname(osp.realpath(__file__))
+
+for moduleRelDir in modulesRelDirs:
+        sys.path.insert(0,osp.join(localModulesBase,moduleRelDir))
+
+
+import mod_cfg
 
 import mod_variant
 
@@ -1947,7 +1950,6 @@ def run(argv=None):
     parser.add_option("--s",default=False,action="store_true",help="The cfg file must contain tissue, blood if it is available and control samples in order to analyze the mosaicism somatic changes",dest="f_somatic")
 
                         
-    # Se leen las opciones aportadas por el usuario
     (options, args) = parser.parse_args(argv[1:])
 
     if len(argv) == 1:
@@ -1967,7 +1969,7 @@ def run(argv=None):
         cfg_file = options.f_cfg
          
         if not os.path.exists(cfg_file):
-            raise IOError('genotype_regions: The cfg file %s does not exist' % (cfg_file))
+            raise IOError('NGS_call_somatic_mosaic_variants: The cfg file %s does not exist' % (cfg_file))
         
         hash_cfg = mod_cfg.read_cfg_file(cfg_file)
         
@@ -1980,34 +1982,31 @@ def run(argv=None):
         else:
             
             f_threshold = float(f_threshold)
-            
         
-        alignment_path = hash_cfg.get('alignment_path','')        
+        # input required
+        analysis_bed = hash_cfg.get('analysis_bed','')        
+        input_files = hash_cfg.get('input_files','')        
         l_samples = hash_cfg.get("sample_names",'').split(',')
         l_ids     = hash_cfg.get("sample_ids",'').split(',')      
+        q_value = hash_cfg.get('q_value','20')
+        Q_value = hash_cfg.get('Q_value','20')
         
+        # reference required
         ref_fasta = hash_cfg.get('ref_fasta','')
-        analysis_bed = hash_cfg.get('analysis_bed','')
+
+        # software required
         samtools_path = hash_cfg.get('samtools_path','')
         bcftools_path = hash_cfg.get('bcftools_path','')
-        annotation_path = hash_cfg.get('annotation_path','')
-        variant_path = hash_cfg.get('variant_path','')
-        reports_path = hash_cfg.get('reports_path','')
         
-        q_value = hash_cfg.get('q_value','0')
-        Q_value = hash_cfg.get('Q_value','0')
+        # output required
+        variant_path = hash_cfg.get('variant_path','')
+        
         
         if q_value == None:
             logger.info("The value of the base threshold quality (q) would be 0 by default. Please, introduce a proper q_value \n")
 
         if Q_value == None:
             logger.info("The value of the mapping quality threshold (Q) would be 0 by default. Please, introduce a proper Q_value \n")
-        
-        if not os.path.exists(alignment_path):
-            raise IOError("The alignment path does not exist. %s" %(alignment_path))
-
-        if not os.path.exists(reports_path):
-            raise IOError("The reports path does not exist. %s" %(reports_path))
         
         if not os.path.isfile(ref_fasta):
             raise IOError("The file does not exist. %s" % (ref_fasta))
@@ -2018,17 +2017,21 @@ def run(argv=None):
         if not os.path.exists(samtools_path):
             raise IOError('The samtools_path path does not exist %s' % (samtools_path))
 
-        if not os.path.exists(annotation_path):
-            raise IOError('The annotation path does not exist %s' % (annotation_path))
-
         if not os.path.exists(variant_path):
             raise IOError('The variant path does not exist %s' % (variant_path))
-        
         
 
         f_somatic = options.f_somatic
         
         if f_somatic == False:
+            
+            # if '--s' option is not given, then the mosaic variants are computed from the aligned bam files
+            l_bam = input_files.split(",")
+            
+            for i in l_bam:
+                if not os.path.isfile(i):
+                    raise IOError("NGS_call_somatic_mosaic_variants: The given BAM file does not exist. %s" % (i))
+            
             
             # IMPORTANT STEP: check whether the samtools and bcftools versions are the same (it usually updates at the same level and time)
             versions_tools = check_samtools_bctools_versions(samtools_path,bcftools_path)
@@ -2048,78 +2051,37 @@ def run(argv=None):
             
                 l_sample_names.append(id+ '_' + sample)
                 
-            l_bam = map(lambda (sample,id): os.path.join(alignment_path,id+ '/'+id+'_'+sample+"_align.realign.recal.bam"), zip(l_samples,l_ids))
     
             logger.info("The mosaicism variant detection starts...\n")
             
             # (1) mpileup the bam files            
             l_bcf = mpileup_calling(l_bam,analysis_bed,ref_fasta,samtools_path,variant_path,l_samples,l_ids,q_value,Q_value,logger)
-            
+             
             # (2) capture of the calls        
             l_vcf = capture_callings(l_bcf,bcftools_path,logger)
-            
+             
             # (3) extract the desired columns and transform from VCF4.1 to VCF4.2 in order to work easily with them        
             l_vcf_trans = select_columns_and_vTransform(l_vcf,bcftools_path,logger) 
-            
+             
             # (4) manual filtering: AVAF (alternative variant allele fraction) depending on the threshold (--m) inserted
             l_vcf_avaf = variant_allele_fraction_filtering(l_vcf_trans,f_threshold,l_ids,logger)
-            
+             
             # (5) samples_run/controls annotation
-            
+             
             # 5.1 split multi-allelic sites into different simple rows   
             l_vcf_split = split_multiallelic_vcf_to_simple(l_vcf_avaf,l_ids,f_threshold,logger)
                  
             # 5.2 combine: samples_run 
-            l_vcf_controls = Pipeline_NGS_variant.annotate(l_vcf_split,hash_cfg)
-
-	    '''            
-            # (6) annotation        
-            for i,vcf in enumerate(l_vcf_controls):
-                logger.info("Annotating %s ... \n" %(vcf))
-                
-                table_mut = os.path.join(annotation_path,'%s/%s_%s_mosaicism_annot_ALL.mut' % (l_ids[i],l_ids[i],l_samples[i]))            
-                arg_annot = ['script.py','--i',vcf,'--o',table_mut,'--s',l_ids[i],'--cfg',cfg_file,'--mosaicism']                                                                                  
-                hash_table = Pipeline_NGS_annotation.run(arg_annot)
-                logger.info("...done!\n")
-                                
-                if not os.path.isfile(table_mut):
-                    #raise IOError("The annotation mut file does not exist. %s" % (table_mut))
-                    logger.info("The annotation mut file does not exist. %s" % (table_mut))
-                    continue
-                
-                # write into xls
-                scriptPath = os.path.realpath(os.path.dirname(sys.argv[0]))
-                
-                scriptPath = scriptPath[0:scriptPath.find('/src')] + '/src/modules'
-                
-                rScriptName = os.path.join(scriptPath,"scripts","creatingReport_simpleMut.R")        
-                args = shlex.split("Rscript %s %s %s %s" %(rScriptName,table_mut,l_sample_names[i],reports_path))
-                
-                logger.info("Generating xls report %s ..." %(l_sample_names[i]))
-                subprocess.call(args)
-                logger.info("done")
-                
-                excel_file = l_sample_names[i] + "_annotation_ALL.xlsx"
-                
-                excel_file = os.path.join(annotation_path,excel_file)
-                
-                try:
-                    fileName,fileExtension = os.path.splitext(excel_file)
-                    excel_file2 = fileName + ".xls"
-                    excel_file = os.path.join(reports_path,excel_file)
-                    excel_file2 = os.path.join(reports_path,excel_file2)
-                    os.system("ssconvert %s %s" %(excel_file,excel_file2))
-                    if os.path.exists(excel_file):
-                        os.remove(excel_file)
-                except:
-                    raise RuntimeError('mosaic_somatic_variants_calling: Error when launching ssconvert (sudo apt-get install gnumeric) \n %s\t%s' % (sys.exc_info()[0],sys.exc_info()[1]))    
-                
-            '''
-     
+            l_vcf_controls = mod_variant.annotate_vcf(l_vcf_split,variant_path,hash_cfg)
+            
             logger.info("The mosaicism variant detection finished!\n")
+            logger.info("You only need to annotate the resulting VCF files ;)\n")
     
         else:
             
+            logger.info("The somatic mosaicism variant detection starts...\n")
+            
+            # input files
             tissue_id = hash_cfg.get('tissue_id','')
             blood_id = hash_cfg.get('blood_id','')
             control_id = hash_cfg.get('control_id','')
@@ -2131,6 +2093,9 @@ def run(argv=None):
             if blood_id <> "":
                 if not os.path.isfile(blood_id):
                     raise IOError("The variant file corresponding to the blood does not exist. %s" % (blood_id))
+                
+            elif blood_id is None:
+                warnings.warn("The variant file corresponding to the blood is not given. Thus, the somatic analysis would be done filtering with the given control samples. \n")
                 
             l_control = control_id.split(",")
             for i in l_control:
@@ -2181,45 +2146,10 @@ def run(argv=None):
                 fo.write(key_str + '\t' + '\t'.join(map(lambda field: hash_tissue[key].get(field,'.'), l_fields))+'\n')
         
             fo.close()
-            '''
-            # ANNOTATION
-            logger.info("Annotating %s ... \n" %(vcf_file_somatic))        
-            table_mut = file_somatic + ".mut"            
             
-            arg_annot = ['script.py','--i',vcf_file_somatic,'--o',table_mut,'--s',sample_name,'--cfg',cfg_file,'--mosaicism','yes']                                                                                  
-            hash_table = Pipeline_NGS_annotation.run(arg_annot)
-            logger.info("...done!\n")
+            logger.info("The somatic mosaicism variant detection finished!\n")
+            logger.info("You only need to annotate the resulting VCF file ;)\n")
             
-            if not os.path.isfile(table_mut):
-                raise IOError("The annotation mut file does not exist. %s" % (table_mut))
-            
-            # write into xls
-            scriptPath = os.path.realpath(os.path.dirname(sys.argv[0]))
-            
-            scriptPath = scriptPath[0:scriptPath.find('/src')] + '/src/modules'
-            
-            rScriptName = os.path.join(scriptPath,"scripts","creatingReport_simpleMut.R")        
-            args = shlex.split("Rscript %s %s %s %s" %(rScriptName,table_mut,sample_name,reports_path))
-            
-            logger.info("Generating xls report %s ..." %(sample_name))
-            subprocess.call(args)
-            logger.info("done")
-            
-            excel_file = sample_name + "_annotation_ALL.xlsx"
-            excel_file = os.path.join(annotation_path,excel_file)
-            
-            try:
-                fileName,fileExtension = os.path.splitext(excel_file)
-                excel_file2 = fileName + ".xls"
-                excel_file = os.path.join(reports_path,excel_file)
-                excel_file2 = os.path.join(reports_path,excel_file2)
-                os.system("ssconvert %s %s" %(excel_file,excel_file2))
-                if os.path.exists(excel_file):
-                    os.remove(excel_file)
-            except:
-                raise RuntimeError('mosaic_somatic_variants_calling: Error when launching ssconvert (sudo apt-get install gnumeric) \n %s\t%s' % (sys.exc_info()[0],sys.exc_info()[1]))    
-            '''
-
             
     except:
         print >> sys.stderr , '\n%s\t%s' % (sys.exc_info()[0],sys.exc_info()[1])
