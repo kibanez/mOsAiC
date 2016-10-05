@@ -41,5 +41,3 @@ Two configuration (*cfg) example files are included:
 
 > configuration_mosaic_computation_part1.cfg configuration file compresses the Step 1 to Step5: the mosaic variant computation.
 > configuration_somatic_mosaic_computation_part2.cfg configuration file compresses the Step 6. This step requires the previus step : the somatic mosaic variant computation.
-
-NOTE: this tool does not annotate the resulting VCF files. This must be done independently.
