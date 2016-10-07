@@ -1,4 +1,4 @@
-# mosaic
+# mOsAiC
 
 Somatic mosaicism brings up to the presence at the same time, in a single individual, of two genetically distinct cell populations arising from a postzygotic mutation.
 
