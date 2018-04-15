@@ -26,8 +26,32 @@ import pysam
 
 import numpy,scipy
 
-from collections import namedtuple 
- 
+from collections import namedtuple
+
+
+def __get_root_name(l_files):
+    l_basename = map(lambda p: os.path.basename(p), l_files)
+
+    if len(l_files) == 1:
+        return os.path.splitext(l_basename[0])
+
+    l_ = []
+
+    for x in izip_longest(*l_basename, fillvalue=None):
+        l_elem = list(set(list(x)))
+
+        if len(l_elem) == 1:
+            l_.append(l_elem[0])
+        else:
+            break
+
+    root = ''.join(l_)
+
+    if len(root) > 1:
+        if root[-1] == '.':
+            root = root[:-1]
+
+    return root
 
 def __get_header(record):
     
@@ -185,9 +209,9 @@ def combine_vcf_v2(l_vcf_files,l_rod_priority,mode,ouput_path=None,**kwargs):
         
         r = vcf.Reader(filename=vcf_file)
         
-        r.infos['NC']  = _Info('NC',1,'Integer',"Number of Calls")
-        r.infos['NV']  = _Info('NV',1,'Integer',"Number of Variants")
-        r.infos['set'] = _Info('set',1,'String',"Source of the vcf file")
+        r.infos['NC'] = _Info('NC', 1, 'Integer', 'Number of Calls', '', '')
+        r.infos['NV'] = _Info('NV', 1, 'Integer', 'Number of Variants', '', '')
+        r.infos['set'] = _Info('set', 1, 'String', 'Source of the vcf file', '', '')
                         
         r.filters = dict_filters
         
@@ -231,7 +255,7 @@ def combine_vcf_v2(l_vcf_files,l_rod_priority,mode,ouput_path=None,**kwargs):
     
     num_samples = len(l_total_samples)
     
-    if mode <> "combine":
+    if mode != "combine":
 
         fo = open(vcf_file_combined,'w')
         fo.write(header)
@@ -553,7 +577,8 @@ def combine_vcf_v2(l_vcf_files,l_rod_priority,mode,ouput_path=None,**kwargs):
                 continue
             
         ## Build the INFO field
-        info    = "set=%s;NC=%d;NV=%d" % (set_str,num_calls,num_variants)
+        info = "set=%s;NC=%d;NV=%d" % (set_str, num_calls, num_variants)
+
         if info_mode == "append":
             str_to_append = ""
             try:
@@ -706,7 +731,7 @@ def annotate_vcf(l_vcf_files_run,output_path,hash_cfg):
     #### 1. Get the variants that overlap in all the samples in a same run. The overlapping changes are written in the file 'vcf_overlapping_variants_within_run'
     sys.stdout.write('\nGetting the variants that completely overlap in all the samples of the run...\n')
       
-    ###vcf_overlapping_variants_within_run = __annotate_overlapping_variants(l_vcf_files_run,output_path,hash_cfg)
+
     vcf_overlapping_variants_within_run = combine_vcf_v2(l_vcf_files_run,[],"combine",output_path)    
     
     ### the samples of the file 'vcf_overlapping_variants_within_run' are replaced to generic sample 'overlapping'
@@ -852,8 +877,8 @@ def annotate_vcf(l_vcf_files_run,output_path,hash_cfg):
     
             target_reader = vcf.Reader(filename=vcf_target)
     
-            target_reader.infos['CT'] = _Info('CT',1,'String',"Controls: pool of controls that a variant appears")
-            target_reader.infos['SR'] = _Info('SR',1,'String',"Samples of the Run: The field is \'1\' if the variant appears in all the samples of the run")
+            target_reader.infos['CT'] = _Info('CT',1,'String','Controls: pool of controls that a variant appears', '', '')
+            target_reader.infos['SR'] = _Info('SR',1,'String','Samples of the Run: The field is \'1\' if the variant appears in all the samples of the run', '', '')
     
             vcf_target_annotated = os.path.splitext(vcf_target)[0]+'.annotated.vcf'
             
