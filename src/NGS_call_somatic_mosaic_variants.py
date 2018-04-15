@@ -1,65 +1,45 @@
 #!/usr/bin/python
 
 import sys, re, shlex , os, string, urllib, time, math, random, subprocess, shutil
-
 from os import path as osp
-
 import optparse
-
-from os import path as osp
-from wx.lib.agw.thumbnailctrl import file_broken
+#from wx.lib.agw.thumbnailctrl import file_broken
 from HTSeq import SAM_Reader
-
 import ConfigParser
-
-from subprocess import Popen , PIPE
-
+from subprocess import Popen, PIPE
 from itertools import izip_longest, chain
-
 import vcf
-
 from vcf.parser import _Filter,_Record,_Info,_Format,_SV
-
 from vcf.utils import walk_together
-
 from operator import itemgetter
-
 import pandas as pd
-
 from tempfile import mkstemp
 from shutil import move
 from os import remove, close
-
 import warnings
-
 import numpy as np
+import logging
+from modules import mod_cfg
+from modules import mod_variant
+#import xlsxwriter
 
 modulesRelDirs = ["modules/"]
 
 localModulesBase = osp.dirname(osp.realpath(__file__))
 
 for moduleRelDir in modulesRelDirs:
-        sys.path.insert(0,osp.join(localModulesBase,moduleRelDir))
+        sys.path.insert(0,osp.join(localModulesBase, moduleRelDir))
 
 
-import mod_cfg
-
-import mod_variant
 
 principalsRelDirs = ["../"]
-
 for pRelDir in principalsRelDirs:
-        sys.path.insert(0,osp.join(localModulesBase,pRelDir))
+        sys.path.insert(0,osp.join(localModulesBase, pRelDir))
 
-import logging
-
-import xlsxwriter
-
-######################################################################
 
 class OptionParser(optparse.OptionParser):
 
-    def check_required (self, opt):
+    def check_required(self, opt):
 
         option = self.get_option(opt)
 
@@ -68,9 +48,9 @@ class OptionParser(optparse.OptionParser):
         if atrib is None:
             self.error("%s option not supplied" % option)
 
-
-#######################################################################
+########################################################################################################################
 # VCF enrichment function in samples_run and pseudocontrols
+
 
 def annotate_vcf(l_vcf_files_run,output_path,hash_cfg):
     
@@ -271,7 +251,7 @@ def annotate_vcf(l_vcf_files_run,output_path,hash_cfg):
     
     return l_vcf_files_run_out
 
-#######################################################################
+########################################################################################################################
 
 def change_sample_name(vcf_file,new_label='overlapping'):
     
@@ -294,7 +274,7 @@ def change_sample_name(vcf_file,new_label='overlapping'):
     
     return vcf_tmp
 
-#######################################################################
+########################################################################################################################
 
 def combine_vcf_v2(l_vcf_files,l_rod_priority,mode,ouput_path=None,**kwargs):
     
@@ -845,7 +825,7 @@ def combine_vcf_v2(l_vcf_files,l_rod_priority,mode,ouput_path=None,**kwargs):
             
     return vcf_file_combined
 
-#######################################################################
+########################################################################################################################
 # we create a table with all the variants corresponding ONLY to the tissue variants and NOT to the control
 # only if blood is True, will be add to "tejido" when lowdepthmosaicism
 
@@ -941,7 +921,8 @@ def parse_control(vcf_input,hash_tissue,blood=False):
     
     
     return hash_table
-#######################################################################
+
+########################################################################################################################
 # we create a table with all the variants corresponding to the tissue variants
 def parse_tissue_vcf(vcf_input):
     
@@ -1075,7 +1056,8 @@ def parse_tissue_vcf(vcf_input):
             raise RuntimeError('mosaic_somatic_variants_calling.parse_tissue_vcf: Some error has occurred in variant line %i:\n%d' % (i))    
 
     return hash_table,header,sample
-#######################################################################
+
+########################################################################################################################
 # functions that replaces in a given file, the pattern for the substitution
 def replace(file_path, pattern, subst):
     #Create temp file
@@ -1090,8 +1072,7 @@ def replace(file_path, pattern, subst):
     #Move new file
     move(abs_path, file_path)
     
-#######################################################################
-
+########################################################################################################################
 def __get_root_name(l_files):
     
     l_basename = map(lambda p: os.path.basename(p) , l_files)
@@ -1117,7 +1098,7 @@ def __get_root_name(l_files):
             
     return root
 
-#######################################################################
+########################################################################################################################
 # bcftools and samtools, some INDELs cannot annotate properly
 # example: ref: ccctcctcctcctcctc
 # alt1: ccctcctcctcctcctcctc (insertion ctc) must be ref (-), alt (CTC)
@@ -1150,7 +1131,7 @@ def check_minimal_INDEL_representation(pos,ref,alt):
     return pos,ref_new,alt_new
 
 
-#######################################################################
+########################################################################################################################
 # McArthur lab
 
 def get_minimal_representation(pos, ref, alt): 
@@ -1171,7 +1152,7 @@ def get_minimal_representation(pos, ref, alt):
         return pos, ref, alt 
     
     
-#######################################################################
+########################################################################################################################
     
 def __get_header_v2(vcf_file):
     
@@ -1193,7 +1174,7 @@ def __get_header_v2(vcf_file):
     
     return header    
 
-#######################################################################
+########################################################################################################################
 def __get_header(record):
     
     header = ""
@@ -1258,17 +1239,29 @@ def __get_header(record):
     
     return header
 
-#######################################################################
+########################################################################################################################
 # Function that splits each multi-allelic row into 2 or more separates (DP and PL as well)
-def split_multiallelic_vcf_to_simple(l_vcf,l_samples,threshold,logger):
+def split_multiallelic_vcf_to_simple(l_vcf,bcftools_path,threshold,logger):
+
     l_vcf_split = []
     
-            
+    logger.info('Splitting each variant with multi-allelic locus ...\n')
     
-    logger.info("Splitting each variant with multi-allelic locus ...\n")
-    
-    for index,vcf_file in enumerate(l_vcf):
-        
+    for index, vcf_file in enumerate(l_vcf):
+
+        # Extract the sample name from the VCF file
+        bcftools_query_args = [bcftools_path, 'query', '-l', vcf_file]
+
+        try:
+
+            sample_name = subprocess.check_output(bcftools_query_args).rstrip()
+
+        except subprocess.CalledProcessError, e:
+
+            msg = 'variant_allele_fraction_filtering: Error running bcftools query -l :%s' % str(e)
+            print msg
+            raise RuntimeError(msg)
+
         fileName, fileExtension = os.path.splitext(vcf_file)
         vcf_file_split = fileName + '.split.vcf' 
         
@@ -1281,7 +1274,7 @@ def split_multiallelic_vcf_to_simple(l_vcf,l_samples,threshold,logger):
         ## header 
         header = __get_header(vcf_reader)        
          
-        l_format  = ['GT','PL','AD']
+        l_format = ['GT', 'PL', 'AD']
          
         fileName, fileExtension = os.path.splitext(vcf_file)
         vcf_file_split = fileName + '.split.vcf' 
@@ -1290,12 +1283,12 @@ def split_multiallelic_vcf_to_simple(l_vcf,l_samples,threshold,logger):
         fo = open(vcf_file_split,'w')
         fo.write(header)
  
-        fo.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t%s\n" %(l_samples[index]))
+        fo.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t%s\n" %sample_name)
          
         ## 2. For each vcf file (sample), iterate for each record, and separate in 2 o more rows, the multiallelic sites
          
         for i,r in enumerate(vcf_reader):
-            if type(r) ==  _Record:
+            if type(r) == _Record:
                  
                 chr = r.CHROM
                 pos = r.POS
@@ -1432,7 +1425,7 @@ def split_multiallelic_vcf_to_simple(l_vcf,l_samples,threshold,logger):
                         pos,ref,alt_str = pos_new,ref_new,alt_new                    
                      
                     alt_str = alt_str.strip()
-                    fo.write("%s\t%d\t%s\t%s\t%s\t%1.2f\t%s\t%s\t%s\t%s\n" % (chr,pos,id,ref,alt_str,float(qual),filter,info_print,':'.join(l_format),format_info))
+                    fo.write("%s\t%d\t%s\t%s\t%s\t%1.2f\t%s\t%s\t%s\t%s\n" % (chr, pos, id, ref, alt_str, float(qual), filter, info_print, ':'.join(l_format),format_info))
                                  
         fo.close()
          
@@ -1444,34 +1437,45 @@ def split_multiallelic_vcf_to_simple(l_vcf,l_samples,threshold,logger):
     
     return l_vcf_split
 
-#######################################################################
-# This function computes the VAF and checks whether a record's VAF is >= threshold (0.07 by default)
+########################################################################################################################
+# This function computes the AVAF and checks whether a record's VAF is >= threshold (0.07 by default)
 # min_allele_balance: the minimum number account in the alternative allele
-def variant_allele_fraction_filtering(l_vcf,threshold,l_samples,logger,min_allele_balance=0.02):
+
+def variant_allele_fraction_filtering(l_vcf,bcftools_path,threshold,logger,min_allele_balance=0.02):
+
     l_vcf_avaf_filtered = []
+    logger.info('AVAF new INFO field determination...\n')
     
-    logger.info("AVAF and MAVAF new INFO fields determination...\n")
-    
-    for index,vcf_file in enumerate(l_vcf):
-    
+    for index, vcf_file in enumerate(l_vcf):
+
+        # Extract the sample name from the VCF file
+        bcftools_query_args = [bcftools_path, 'query', '-l', vcf_file]
+
+        try:
+
+            sample_name = subprocess.check_output(bcftools_query_args).rstrip()
+
+        except subprocess.CalledProcessError, e:
+
+            msg = 'variant_allele_fraction_filtering: Error running bcftools query -l :%s' % str(e)
+            print msg
+            raise RuntimeError(msg)
+
         fileName, fileExtension = os.path.splitext(vcf_file)
         vcf_file_filtered = fileName + ".AVAF.filtered" + str(int(threshold*100)) + "%.vcf"  # vcf file with the AVAF filtered depending on the threshold 
         
         dict_filters = {}
         
-        vcf_reader = vcf.Reader(filename=vcf_file) 
+        vcf_reader = vcf.Reader(filename=vcf_file)
         dict_filters.update(vcf_reader.filters)
         
         ## 1. Define the new INFO field that will be included
         
-        vcf_reader.infos['AVAF']  = _Info('AVAF',1,'String',"Alternative variant allele frequency")
-        vcf_reader.infos['MAVAF']  = _Info('MAVAF',1,'String',"Maximum alternative variant allele frequency, the most representative one")
+        vcf_reader.infos['AVAF'] = _Info('AVAF', 1, 'String', 'Alternative variant allele frequency', '', '')
+        vcf_reader.infos['MAVAF']  = _Info('MAVAF', 1, 'String', 'Maximum alternative variant allele frequency, the most representative one', '', '')
         #vcf_reader.infos['ALTSTR']  = _Info('ALTSTR',1,'String',"All the alternative alleles with a frequency higher than mosaicism threshold")
 
-        # INFO fields
-        hash_info = dict(vcf_reader.infos)
-
-        vcf_reader.filters['LowDepthAltMosaicism'] = _Filter('LowDepthAltMosaicism','The most representative alternative variant allele frequency is lower than the mosaicism threshold')
+        vcf_reader.filters['LowDepthAltMosaicism'] = _Filter('LowDepthAltMosaicism', 'The most representative alternative variant allele frequency is lower than the mosaicism threshold')
         
         ## header 
         header = __get_header(vcf_reader)        
@@ -1479,11 +1483,11 @@ def variant_allele_fraction_filtering(l_vcf,threshold,l_samples,logger,min_allel
         l_format  = ['GT','PL','AD'] 
                 
         
-        ## 2. Write in the corresponding filtered vcf the header
-        fo = open(vcf_file_filtered,'w')
+        ## 2. Write the header into the corresponding filtered VCF file
+        fo = open(vcf_file_filtered, 'w')
         fo.write(header)
         
-        fo.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t%s\n" %(l_samples[index]))
+        fo.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t%s\n" % sample_name)
         
         # to break (continue) in inner for loop
         keeplooping = False
@@ -1766,7 +1770,7 @@ def variant_allele_fraction_filtering(l_vcf,threshold,l_samples,logger,min_allel
     
     return l_vcf_avaf_filtered
 
-#######################################################################
+########################################################################################################################
 
 def capture_callings(l_bcf,bcftools_path,logger):
     
@@ -1796,7 +1800,7 @@ def capture_callings(l_bcf,bcftools_path,logger):
     return l_vcf
 
 
-#######################################################################
+########################################################################################################################
 def check_samtools_bctools_versions(samtools_path,bcftools_path):
     
     # /home/kibanez/Escritorio/samtools-1.3.1/samtools --version    
@@ -1857,42 +1861,47 @@ def check_samtools_bctools_versions(samtools_path,bcftools_path):
 
 
 
-#######################################################################
-def mpileup_calling(l_bam,bed,fasta,samtools_path,variant_path,l_samples,l_ids,q_value,Q_value,logger):
+########################################################################################################################
+
+def mpileup_calling(l_bam,bed,fasta,samtools_path,variant_path,q_value,q_value2,logger):
+
     l_bcf = []
     
-    for i,bam_file in enumerate(l_bam):
+    for i, bam_file in enumerate(l_bam):
         
-        logger.info("Samtools mpileup --> %s \n" %(bam_file))
-        
-        sample_folder = os.path.join(variant_path,str(l_ids[i]))
+        logger.info('Samtools mpileup --> %s \n' %bam_file)
+
+        bam_name = os.path.splitext(os.path.basename(bam_file))[0]
+
+        sample_folder = os.path.join(variant_path, bam_name)
         if not os.path.exists(sample_folder):
             os.mkdir(sample_folder)
-        bcf_file = os.path.join(variant_path,'%s/%s_%s_align.realign.recal.bcf') % (l_ids[i],l_ids[i],l_samples[i])
-    
-        
+
+        bcf_file = os.path.join(sample_folder, bam_name + '.bcf')
+
         f_bcf = open(bcf_file,'w')
         
         #$samtools_path mpileup -Buf $ref_fasta --positions $bed --output-tags DP,AD,ADF,ADR,SP,INFO/AD,INFO/ADF,INFO/ADR -q 0 -Q 0 $bam_file > $bcf_file
-        mpileup_args = [samtools_path,'mpileup','-Buf',fasta,'--positions',bed,'--output-tags','DP,AD,ADF,ADR,SP,INFO/AD,INFO/ADF,INFO/ADR','-q',q_value,'-Q',Q_value,bam_file]
-        mpileup_sal = Popen(mpileup_args,stdin=PIPE,stdout=f_bcf,stderr=PIPE,close_fds=True,bufsize=1)
-        (trash,logdata) = mpileup_sal.communicate()
+        mpileup_args = [samtools_path, 'mpileup', '-Buf', fasta, '--positions', bed, '--output-tags', 'DP,AD,ADF,ADR,SP,INFO/AD,INFO/ADF,INFO/ADR',
+                        '-q', q_value, '-Q', q_value2, bam_file]
+        mpileup_sal = Popen(mpileup_args, stdin=PIPE, stdout=f_bcf, stderr=PIPE, close_fds=True, bufsize=1)
+        (trash, logdata) = mpileup_sal.communicate()
         mpileup_sal.wait()
         
-        if logdata <> "":
-            if logdata.lower().find("error") <> -1:
-                raise RuntimeError('mosaic_somatic_variants_calling.mpileup_calling: Error in samtools mpileup:\n%s\n' % (logdata))
+        if logdata != "":
+            if logdata.lower().find("error") != -1:
+                raise RuntimeError('mosaic_somatic_variants_calling.mpileup_calling: Error in samtools mpileup:\n%s\n' % logdata)
         
         f_bcf.close()
         
         l_bcf.append(bcf_file)
     
-        logger.info("Samtools mpileup done!\n")
+        logger.info('samtools mpileup done!\n')
         
     return l_bcf
 
 
-#######################################################################
+########################################################################################################################
 # Function that selectes the INFO and FORMAT fields, and then, downgrades to VCF4.1. And it also changes the FORMAT AD field, that is badly defined in the new version VCF4.2
 def select_columns_and_vTransform(l_vcf,bcftools_path,logger):
     l_vcf_filtered = []
@@ -1936,8 +1945,7 @@ def select_columns_and_vTransform(l_vcf,bcftools_path,logger):
             
     return l_vcf_filtered
 
-#######################################################################
-
+########################################################################################################################
 
 def run(argv=None):
     
@@ -1945,9 +1953,15 @@ def run(argv=None):
    
     parser = OptionParser(add_help_option=True,description="",formatter= optparse.TitledHelpFormatter(width = 200))
     
-    parser.add_option("--cfg",default=None,help="Input cfg file",dest="f_cfg")
-    parser.add_option("--m",default=None,help="The desired threshold of the mosaicism (by default the minimum threshold is set to 0.07 (7%))",dest="f_threshold")
-    parser.add_option("--s",default=False,action="store_true",help="The cfg file must contain tissue, blood if it is available and control samples in order to analyze the mosaicism somatic changes",dest="f_somatic")
+    parser.add_option("--cfg", default=None,
+                      help= 'Input cfg file',
+                      dest="f_cfg")
+    parser.add_option("--m", default=None,
+                      help= 'The desired threshold of the mosaicism (by default the minimum threshold is set to 0.07 (7%))',
+                      dest="f_threshold")
+    parser.add_option("--s", default=False, action="store_true",
+                      help= 'The cfg file must contain tissue, blood if it is available and control samples in order to analyze the mosaicism somatic changes',
+                      dest="f_somatic")
 
                         
     (options, args) = parser.parse_args(argv[1:])
@@ -1969,13 +1983,13 @@ def run(argv=None):
         cfg_file = options.f_cfg
          
         if not os.path.exists(cfg_file):
-            raise IOError('NGS_call_somatic_mosaic_variants: The cfg file %s does not exist' % (cfg_file))
+            raise IOError('NGS_call_somatic_mosaic_variants: The cfg file %s does not exist' % cfg_file)
         
         hash_cfg = mod_cfg.read_cfg_file(cfg_file)
         
         f_threshold = options.f_threshold
         
-        if f_threshold == None:
+        if f_threshold is None:
             
             f_threshold = 0.07
             
@@ -1984,41 +1998,39 @@ def run(argv=None):
             f_threshold = float(f_threshold)
         
         # input required
-        analysis_bed = hash_cfg.get('analysis_bed','')        
-        input_files = hash_cfg.get('input_files','')        
-        l_samples = hash_cfg.get("sample_names",'').split(',')
-        l_ids     = hash_cfg.get("sample_ids",'').split(',')      
-        q_value = hash_cfg.get('q_value','20')
-        Q_value = hash_cfg.get('Q_value','20')
+        analysis_bed = hash_cfg.get('analysis_bed', '')
+        input_files = hash_cfg.get('input_files', '')
+        q_value = hash_cfg.get('q_value', '20')
+        q_value2 = hash_cfg.get('Q_value', '20')
         
         # reference required
-        ref_fasta = hash_cfg.get('ref_fasta','')
+        ref_fasta = hash_cfg.get('ref_fasta', '')
 
         # software required
-        samtools_path = hash_cfg.get('samtools_path','')
-        bcftools_path = hash_cfg.get('bcftools_path','')
+        samtools_path = hash_cfg.get('samtools_path', '')
+        bcftools_path = hash_cfg.get('bcftools_path', '')
         
         # output required
-        variant_path = hash_cfg.get('variant_path','')
+        variant_path = hash_cfg.get('variant_path', '')
         
         
-        if q_value == None:
-            logger.info("The value of the base threshold quality (q) would be 0 by default. Please, introduce a proper q_value \n")
+        if q_value is None:
+            logger.info('The value of the base threshold quality (q) would be 0 by default. Please, introduce a proper q_value \n')
 
-        if Q_value == None:
-            logger.info("The value of the mapping quality threshold (Q) would be 0 by default. Please, introduce a proper Q_value \n")
+        if q_value2 is None:
+            logger.info('The value of the mapping quality threshold (Q) would be 0 by default. Please, introduce a proper Q_value \n')
         
         if not os.path.isfile(ref_fasta):
-            raise IOError("The file does not exist. %s" % (ref_fasta))
+            raise IOError("The file does not exist. %s" % ref_fasta)
 
         if not os.path.isfile(analysis_bed):
-            raise IOError("The analysis bed does not exist. %s" % (analysis_bed))
+            raise IOError("The analysis bed does not exist. %s" % analysis_bed)
         
         if not os.path.exists(samtools_path):
-            raise IOError('The samtools_path path does not exist %s' % (samtools_path))
+            raise IOError('The samtools_path path does not exist %s' % samtools_path)
 
         if not os.path.exists(variant_path):
-            raise IOError('The variant path does not exist %s' % (variant_path))
+            raise IOError('The variant path does not exist %s' % variant_path)
         
 
         f_somatic = options.f_somatic
@@ -2030,80 +2042,67 @@ def run(argv=None):
             
             for i in l_bam:
                 if not os.path.isfile(i):
-                    raise IOError("NGS_call_somatic_mosaic_variants: The given BAM file does not exist. %s" % (i))
+                    raise IOError("NGS_call_somatic_mosaic_variants: The given BAM file does not exist. %s" % i)
             
             
-            # IMPORTANT STEP: check whether the samtools and bcftools versions are the same (it usually updates at the same level and time)
+            # IMPORTANT PRELIMINAR STEP: check whether the samtools and bcftools versions are the same (it usually updates at the same level and time)
             versions_tools = check_samtools_bctools_versions(samtools_path,bcftools_path)
             
             if not versions_tools:
-                raise IOError('ACTHUNG!!! The samtools and bcftools versions must be the same. It is absolutely required for an adequate usage of this tool.\n')
-            
-            l_sample_names = []
-            
-            for i,(sample,id) in enumerate(izip_longest(l_samples,l_ids,fillvalue=None)): 
-                      
-                if sample == None:
-                    raise NameError("The sample name is empty. Position in the string: %d" % (i))
-                
-                if id == None:
-                    raise NameError("The sample id is empty. Position in the string: %d" % (i))
-            
-                l_sample_names.append(id+ '_' + sample)
-                
+                raise IOError('Warning: samtools and bcftools versions must be the same. It is absolutely required for an adequate usage of this tool. Please visit http://www.htslib.org/download/ \n')
     
             logger.info("The mosaicism variant detection starts...\n")
             
-            # (1) mpileup the bam files            
-            l_bcf = mpileup_calling(l_bam,analysis_bed,ref_fasta,samtools_path,variant_path,l_samples,l_ids,q_value,Q_value,logger)
+            # (1) mpileup the BAM files
+            l_bcf = mpileup_calling(l_bam, analysis_bed, ref_fasta, samtools_path, variant_path, q_value, q_value2, logger)
              
             # (2) capture of the calls        
-            l_vcf = capture_callings(l_bcf,bcftools_path,logger)
+            l_vcf = capture_callings(l_bcf, bcftools_path, logger)
              
-            # (3) extract the desired columns and transform from VCF4.1 to VCF4.2 in order to work easily with them        
-            l_vcf_trans = select_columns_and_vTransform(l_vcf,bcftools_path,logger) 
+            # (3) extract the desired columns and transform them from VCF4.1 to VCF4.2 in order to work easily with them
+            l_vcf_trans = select_columns_and_vTransform(l_vcf, bcftools_path, logger)
              
-            # (4) manual filtering: AVAF (alternative variant allele fraction) depending on the threshold (--m) inserted
-            l_vcf_avaf = variant_allele_fraction_filtering(l_vcf_trans,f_threshold,l_ids,logger)
+            # (4) manual filtering: creation of AVAF (alternative variant allele fraction) depending on the threshold (--m) inserted
+            l_vcf_avaf = variant_allele_fraction_filtering(l_vcf_trans, bcftools_path, f_threshold, logger)
              
             # (5) samples_run/controls annotation
              
-            # 5.1 split multi-allelic sites into different simple rows   
-            l_vcf_split = split_multiallelic_vcf_to_simple(l_vcf_avaf,l_ids,f_threshold,logger)
+            # (5.1) split multi-allelic sites into different simple rows
+            l_vcf_split = split_multiallelic_vcf_to_simple(l_vcf_avaf, bcftools_path, f_threshold, logger)
                  
-            # 5.2 combine: samples_run 
-            l_vcf_controls = mod_variant.annotate_vcf(l_vcf_split,variant_path,hash_cfg)
+            # (5.2) combine: samples_run (compute how many times the variant is detected among the samples included in the cfg file
+            mod_variant.annotate_vcf(l_vcf_split, variant_path, hash_cfg)
             
-            logger.info("The mosaicism variant detection finished!\n")
-            logger.info("You only need to annotate the resulting VCF files ;)\n")
+            logger.info('The mosaicism variant detection finished!\n')
+            logger.info('You only need to annotate the resulting VCF files ;_)\n')
     
         else:
             
-            logger.info("The somatic mosaicism variant detection starts...\n")
+            logger.info('The somatic mosaicism variant detection starts...\n')
             
             # input files
-            tissue_id = hash_cfg.get('tissue_id','')
-            blood_id = hash_cfg.get('blood_id','')
-            control_id = hash_cfg.get('control_id','')
-            sample_name = hash_cfg.get('sample_name','')
+            tissue_id = hash_cfg.get('tissue_id', '')
+            blood_id = hash_cfg.get('blood_id', '')
+            control_id = hash_cfg.get('control_id', '')
+            sample_name = hash_cfg.get('sample_name', '')
             
             if not os.path.isfile(tissue_id):
-                raise IOError("The variant file corresponding to the tissue does not exist. %s" % (tissue_id))
+                raise IOError("The variant file corresponding to the tissue does not exist. %s" % tissue_id)
             
-            if blood_id <> "":
+            if blood_id != "":
                 if not os.path.isfile(blood_id):
-                    raise IOError("The variant file corresponding to the blood does not exist. %s" % (blood_id))
+                    raise IOError("The variant file corresponding to the blood does not exist. %s" % blood_id)
                 
             elif blood_id is None:
-                warnings.warn("The variant file corresponding to the blood is not given. Thus, the somatic analysis would be done filtering with the given control samples. \n")
+                warnings.warn('The variant file corresponding to the blood is not given. Thus, the somatic analysis would be done filtering with the given control samples. \n')
                 
             l_control = control_id.split(",")
             for i in l_control:
                 if not os.path.isfile(i):
-                    raise IOError("The variant file corresponding to on of the control does not exist. %s" % (i))
+                    raise IOError("The variant file corresponding to on of the control does not exist. %s" % i)
 
             if sample_name == "":
-                raise IOError("The sample name must be have info. %s" % (i))
+                raise IOError("The sample name must be have info. %s" % i)
             
             fileName, fileExtension = os.path.splitext(tissue_id)
             file_somatic = fileName + "_VS_blood_and_controls"
@@ -2114,29 +2113,27 @@ def run(argv=None):
                 return hash_tissue
             
             # Sometimes there is no paired-blood sample which corresponds to the tissue sample. In those cases, we only filtered by the control samples
-            if blood_id <> "":
+            if blood_id != "":
                 
-                hash_table_tmp = parse_control(blood_id,hash_tissue,blood=True)
+                hash_table_tmp = parse_control(blood_id, hash_tissue, blood=True)
             
                 hash_tissue = hash_table_tmp
 
             for vcf_control in l_control:
                 
-                hash_table_tmp = parse_control(vcf_control,hash_tissue)
+                hash_table_tmp = parse_control(vcf_control, hash_tissue)
             
                 hash_tissue = hash_table_tmp
             
-            # check if hash contains new
-            
             vcf_file_somatic = file_somatic + ".vcf"
             
-            fo = open(vcf_file_somatic,'w')
+            fo = open(vcf_file_somatic, 'w')
             fo.write(header)
-            fo.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t%s\n" % (sample))
+            fo.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t%s\n" % sample)
             
-            chr_cyto_sorted = map(lambda i: "chr%i" % (i), range(1,23))+['chrX','chrY','chrM']
+            chr_cyto_sorted = map(lambda i: "chr%i" % i, range(1, 23))+['chrX', 'chrY', 'chrM']
             
-            l_fields = ['qual','filter','info','format','format_info']
+            l_fields = ['qual', 'filter', 'info', 'format', 'format_info']
             
             for key in sorted(sorted(hash_tissue.keys(),key=itemgetter(1)),key=lambda x: chr_cyto_sorted.index(x[0])):        
                 l_key = map(str,list(key))
@@ -2147,15 +2144,15 @@ def run(argv=None):
         
             fo.close()
             
-            logger.info("The somatic mosaicism variant detection finished!\n")
-            logger.info("You only need to annotate the resulting VCF file ;)\n")
+            logger.info('The somatic mosaicism variant detection finished!\n')
+            logger.info('You only need to annotate the resulting VCF file ;)\n')
             
             
     except:
-        print >> sys.stderr , '\n%s\t%s' % (sys.exc_info()[0],sys.exc_info()[1])
+        print >> sys.stderr, '\n%s\t%s' % (sys.exc_info()[0],sys.exc_info()[1])
         sys.exit(2)
 
-############################################################################333
+########################################################################################################################
      
 if __name__=='__main__':
     
