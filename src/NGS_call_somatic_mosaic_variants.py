@@ -122,7 +122,7 @@ def combine_vcf_v2(l_vcf_files,l_rod_priority,mode,ouput_path=None,**kwargs):
         l_rod_priority = l_vcf_files
         label_mode = "no_append"
         
-    if len(l_rod_priority) <> len(l_vcf_files):
+    if len(l_rod_priority) != len(l_vcf_files):
         raise InputError('mod_variant.combine_vcf_v2: The number of ids in the list of rod priority do not agree with the number of vcf files')
     
     num_files = len(l_vcf_files)
@@ -198,7 +198,7 @@ def combine_vcf_v2(l_vcf_files,l_rod_priority,mode,ouput_path=None,**kwargs):
     
     num_samples = len(l_total_samples)
     
-    if mode <> "combine":
+    if mode != "combine":
 
         fo = open(vcf_file_combined,'w')
         fo.write(header)
@@ -247,7 +247,7 @@ def combine_vcf_v2(l_vcf_files,l_rod_priority,mode,ouput_path=None,**kwargs):
         
         for r_i in l_record:
             
-            if type(r_i) <> vcf.model._Record:
+            if type(r_i) != vcf.model._Record:
                 continue
             
             chrm  = r_i.CHROM
@@ -258,7 +258,7 @@ def combine_vcf_v2(l_vcf_files,l_rod_priority,mode,ouput_path=None,**kwargs):
             
             l_s = []
             for c in r_i.samples:
-                if c.gt_bases <> None:
+                if c.gt_bases != None:
                     l_s.append(c.sample)
             
             if l_alt_r == ['None']: # When the site has being for all the samples genotyped and is HOM_REF
@@ -269,9 +269,9 @@ def combine_vcf_v2(l_vcf_files,l_rod_priority,mode,ouput_path=None,**kwargs):
             ### Build the ALT fields
             l_alt = list(set(l_alt))
             alt_str = ','.join(l_alt)
-            if l_alt <> ['.']:
-                if set(l_alt).intersection(set(['.']))<> set([]):
-                #if filter(lambda a: a=='.', l_alt) <> []:
+            if l_alt != ['.']:
+                if set(l_alt).intersection(set(['.']))!= set([]):
+                #if filter(lambda a: a=='.', l_alt) != []:
                     alt_str = alt_str.replace('.', '')
                     alt_str = alt_str.replace(',', '') 
             
@@ -285,14 +285,14 @@ def combine_vcf_v2(l_vcf_files,l_rod_priority,mode,ouput_path=None,**kwargs):
                 if r_i.genotype(sample)['GT'] == "0/0":
                     is_HOM_REF = True
                     num_calls += 1
-                elif r_i.genotype(sample)['GT'] <> "0/0" and r_i.genotype(sample)['GT'] <> None:
+                elif r_i.genotype(sample)['GT'] != "0/0" and r_i.genotype(sample)['GT'] != None:
                     num_calls    += 1
                     num_variants += 1
                      
             if len(l_alt_r) > 1:
                 is_MULTIALLELIC = True
             
-            if r_i.ID <> None:
+            if r_i.ID != None:
                 l_id.extend(r_i.ID.split(';'))
             else:
                 if not is_HOM_REF:
@@ -302,10 +302,10 @@ def combine_vcf_v2(l_vcf_files,l_rod_priority,mode,ouput_path=None,**kwargs):
                 else:
                     l_id = ['.']
             
-            if r_i.QUAL <> None:
+            if r_i.QUAL != None:
                 sum_QUAL += r_i.QUAL
             
-            if r_i.QUAL <> None:
+            if r_i.QUAL != None:
                 num_r += 1
             
             for sample in l_s: # Iterating across the samples of a vcf file
@@ -335,7 +335,7 @@ def combine_vcf_v2(l_vcf_files,l_rod_priority,mode,ouput_path=None,**kwargs):
                             
                 hash_gt = {} # hash of the genotipe information
                 
-                if r_i.FILTER <> [] and r_i.FILTER <> None:
+                if r_i.FILTER != [] and r_i.FILTER != None:
                     l_filter.extend(r_i.FILTER) 
                     l_set[i_sample] = "filterIn"+rod
                     hash_filter[sample] = True
@@ -421,7 +421,7 @@ def combine_vcf_v2(l_vcf_files,l_rod_priority,mode,ouput_path=None,**kwargs):
             set_str = "Intersection"
         else:
             for s in l_set:
-                if s<>None:
+                if s!=None:
                     set_str += s+'--'
             set_str = set_str[:-2]
         
@@ -431,7 +431,7 @@ def combine_vcf_v2(l_vcf_files,l_rod_priority,mode,ouput_path=None,**kwargs):
         num_filtered = len(hash_filter.keys())
         l_filter = list(set(l_filter))
         filter_string  = "PASS"
-        if l_filter <> []: # in case any call is filtered
+        if l_filter != []: # in case any call is filtered
             #if num_calls == num_filtered:
             # JUNE'16: OJO!!! if all the samples in the pool are filtered, so, filteredInALL and NC = num_samples. Otherwise, we do not know which samples are filtered
             if num_samples == num_filtered:
@@ -439,7 +439,7 @@ def combine_vcf_v2(l_vcf_files,l_rod_priority,mode,ouput_path=None,**kwargs):
                 
             filter_string = ""
             for f in l_filter:
-                if f<>'PASS':
+                if f!='PASS':
                     filter_string += f+';'  
             filter_string = filter_string[:-1]
         
@@ -481,7 +481,7 @@ def combine_vcf_v2(l_vcf_files,l_rod_priority,mode,ouput_path=None,**kwargs):
                             else:
                                 filter_s = "filtered"
                                 
-                            if filter_s <> 'PASS':
+                            if filter_s != 'PASS':
                                 l_set_walker.append(s)
                             else:
                                 l_set_walker = [s] + l_set_walker
@@ -503,16 +503,16 @@ def combine_vcf_v2(l_vcf_files,l_rod_priority,mode,ouput_path=None,**kwargs):
                             else:
                                 filter_s = "filtered"
                            
-                            if filter_s <> 'PASS' and l_set_walker == ["FilteredInAll"]:
+                            if filter_s != 'PASS' and l_set_walker == ["FilteredInAll"]:
                                 l_set_walker = ["FilteredInAll"]
-                            elif filter_s <> 'PASS' and l_set_walker <> ["FilteredInAll"]:
+                            elif filter_s != 'PASS' and l_set_walker != ["FilteredInAll"]:
                                 l_set_walker.append(l_set_unique)    
                             else:
                                 l_set_walker = [l_set_unique] + l_set_walker
             
                 set_str = '--'.join(l_set_walker)
                 
-                if set_str <> "FilteredInAll":
+                if set_str != "FilteredInAll":
                     num_calls = len(l_set_walker)
         
             else:
@@ -539,12 +539,12 @@ def combine_vcf_v2(l_vcf_files,l_rod_priority,mode,ouput_path=None,**kwargs):
                 
         ## Build the FORMAT field
         if remove_non_variants:
-            if filter(lambda gt: gt == '0/0' or gt == 'None', l_gt) <> []:
+            if filter(lambda gt: gt == '0/0' or gt == 'None', l_gt) != []:
                 continue
         
         gt_all  = map(lambda i: ':'.join(i) , l_gt)
         ## Build the ID field
-        l_id = filter(lambda id: id<>'.', list(set(l_id)))
+        l_id = filter(lambda id: id!='.', list(set(l_id)))
         if l_id == []:
             l_id = ['.']
         id = ','.join(list(set(l_id)))
@@ -552,9 +552,9 @@ def combine_vcf_v2(l_vcf_files,l_rod_priority,mode,ouput_path=None,**kwargs):
 #         ### Build the ALT fields
 #         l_alt = list(set(l_alt))
 #         alt_str = ','.join(l_alt)
-#         if l_alt <> ['.']:
-#             if set(l_alt).intersection(set(['.']))<> set([]):
-#             #if filter(lambda a: a=='.', l_alt) <> []:
+#         if l_alt != ['.']:
+#             if set(l_alt).intersection(set(['.']))!= set([]):
+#             #if filter(lambda a: a=='.', l_alt) != []:
 #                 alt_str = alt_str.replace('.', '')
 #                 alt_str = alt_str.replace(',', '') 
         
@@ -649,7 +649,7 @@ def parse_control(vcf_input,hash_tissue,blood=False):
                 alt = r.ALT
                 
                 # ALT
-                if alt <> [None]:
+                if alt != [None]:
                     l_alt = []
                     if len(alt) > 1:                        
                         for x in alt:
@@ -670,7 +670,7 @@ def parse_control(vcf_input,hash_tissue,blood=False):
                 # FILTER
                 l_filter = []
                 
-                if r.FILTER <> [] and r.FILTER <> None:
+                if r.FILTER != [] and r.FILTER != None:
                     l_filter.extend(r.FILTER) 
                 else:
                     l_filter.append("PASS")
@@ -770,7 +770,7 @@ def parse_tissue_vcf(vcf_input):
                 
                 
                 # ALT
-                if alt <> [None]:
+                if alt != [None]:
                     l_alt = []
                     if len(alt) > 1:                        
                         for x in alt:
@@ -787,7 +787,7 @@ def parse_tissue_vcf(vcf_input):
                 # FILTER
                 l_filter = []
                 
-                if r.FILTER <> [] and r.FILTER <> None:
+                if r.FILTER != [] and r.FILTER != None:
                     l_filter.extend(r.FILTER) 
                 else:
                     l_filter.append("PASS")
@@ -1310,7 +1310,7 @@ def variant_allele_fraction_filtering(l_vcf,bcftools_path,threshold,logger,min_a
                 # si hay presencia de un alelo alternativo seguimos, si no, lo quitamos del vcf (no hay cambio), limpio
                 # alt = [None]
                 
-                if alt <> [None]:
+                if alt != [None]:
                     l_alt = []
                     if len(alt) > 1:                        
                         for x in alt:
@@ -1446,14 +1446,14 @@ def variant_allele_fraction_filtering(l_vcf,bcftools_path,threshold,logger,min_a
     
                     ## l_PL must be a 3 multiple ==> 3 * len(l_alt). We must remove or add 255 (for instance, we do not use this data) not to have errors during the annotation (otherwise, snpEff crashes)
                     if not isinstance(l_alt,str):
-                        if len(l_PL) <> 3*len(l_alt):
+                        if len(l_PL) != 3*len(l_alt):
                             diff = len(l_PL) - (3 * len(l_alt))
                             if diff > 0:
                                 del l_PL[-diff:]
                             else:
                                 l_PL.extend(np.repeat(255, np.abs(diff)))
                     else:
-                        if len(l_PL) <> 3:
+                        if len(l_PL) != 3:
                             diff = len(l_PL) - 3
                             if diff > 0:
                                 del l_PL[-diff:]
@@ -1585,8 +1585,8 @@ def capture_callings(l_bcf,bcftools_path,logger):
         (trash,logdata) = bcftools_sal.communicate()
         bcftools_sal.wait()
         
-        if logdata <> "":
-            if logdata.lower().find("error") <> -1:
+        if logdata != "":
+            if logdata.lower().find("error") != -1:
                 raise RuntimeError('mosaic_somatic_variants_calling.capture_callings: Error in bcftools call:\n%s\n' % (logdata))
     
         logger.info("bcftools calling done!\n")
@@ -1608,8 +1608,8 @@ def check_samtools_bctools_versions(samtools_path,bcftools_path):
     (trash,logdata) = samtools_sal.communicate()
     samtools_sal.wait()
     
-    if logdata <> "":
-        if logdata.lower().find("error") <> -1:
+    if logdata != "":
+        if logdata.lower().find("error") != -1:
             raise RuntimeError('mosaic_somatic_variants_calling.check_samtools_bcftools_versions: Error in samtools --version:\n%s\n' % (logdata))
     
     f_samtools.close()
@@ -1622,8 +1622,8 @@ def check_samtools_bctools_versions(samtools_path,bcftools_path):
     (trash,logdata) = bcftools_sal.communicate()
     bcftools_sal.wait()
     
-    if logdata <> "":
-        if logdata.lower().find("error") <> -1:
+    if logdata != "":
+        if logdata.lower().find("error") != -1:
             raise RuntimeError('mosaic_somatic_variants_calling.check_samtools_bcftools_versions: Error in bcftools --version:\n%s\n' % (logdata))
     
     f_bcftools.close()
@@ -1716,8 +1716,8 @@ def select_columns_and_vTransform(l_vcf,bcftools_path,logger):
         (trash,logdata) = manipulate_sal.communicate()
         manipulate_sal.wait()
         
-        if logdata <> "":
-            if logdata.lower().find('fallo') <> -1:
+        if logdata != "":
+            if logdata.lower().find('fallo') != -1:
                 raise RuntimeError('mosaic_somatic_variants_calling.clean_columns_and_vTransform: Error when launching bcftools annotate -x :\n%s' % (logdata))
         
         
